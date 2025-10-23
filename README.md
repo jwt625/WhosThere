@@ -1,6 +1,6 @@
 # WhosThere
 
-macOS utility that captures a photo from the front camera when you return after being idle.
+macOS utility that captures a photo from the front camera when you return after being idle (or someone else touched it).
 
 ## Usage
 
