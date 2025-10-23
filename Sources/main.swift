@@ -47,16 +47,20 @@ class ActivityMonitor {
     
     private func setupEventTap() {
         // Event mask for keyboard and mouse/trackpad activity
-        let eventMask: CGEventMask =
+        let keyboardMask: CGEventMask =
             (1 << CGEventType.keyDown.rawValue) |
             (1 << CGEventType.keyUp.rawValue) |
-            (1 << CGEventType.flagsChanged.rawValue) |
+            (1 << CGEventType.flagsChanged.rawValue)
+
+        let mouseMask: CGEventMask =
             (1 << CGEventType.leftMouseDown.rawValue) |
             (1 << CGEventType.rightMouseDown.rawValue) |
             (1 << CGEventType.mouseMoved.rawValue) |
             (1 << CGEventType.leftMouseDragged.rawValue) |
             (1 << CGEventType.rightMouseDragged.rawValue) |
             (1 << CGEventType.scrollWheel.rawValue)
+
+        let eventMask = keyboardMask | mouseMask
         
         guard let eventTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
