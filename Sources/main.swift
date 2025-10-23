@@ -99,10 +99,10 @@ class ActivityMonitor {
             // Transition from idle to active - CAPTURE!
             let idleDuration = now.timeIntervalSince(lastActivityTime)
             print("Activity detected after \(Int(idleDuration))s idle - capturing image...")
-            captureImage(idleDuration: idleDuration)
-
-            // Stop camera after capture
-            camera.stopSession()
+            // Wait briefly for camera to be ready, then capture
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.captureImage(idleDuration: idleDuration)
+            }
         }
 
         state = .active
@@ -124,18 +124,18 @@ class ActivityMonitor {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
         let dateString = dateFormatter.string(from: Date())
-        
         let filename = "capture_\(dateString)_idle\(Int(idleDuration))s.jpg"
-        
         let localPath = "\(Config.captureDirectory)/\(filename)"
         let tempPath = "\(Config.tempDirectory)/\(filename)"
-        
-        camera.capturePhoto(saveTo: [localPath, tempPath]) { success in
+
+        camera.capturePhoto(saveTo: [localPath, tempPath]) { [weak self] success in
             if success {
                 print("Image saved: \(filename)")
             } else {
                 print("Failed to capture image")
             }
+            // Stop camera after capture attempt
+            self?.camera.stopSession()
         }
     }
 }
@@ -187,6 +187,11 @@ class CameraCapture: NSObject {
         guard let captureSession = captureSession, !captureSession.isRunning else { return }
         DispatchQueue.global(qos: .background).async {
             captureSession.startRunning()
+            if !captureSession.isRunning {
+                DispatchQueue.main.async {
+                    print("WARNING: Camera session failed to start (may be in use by another app)")
+                }
+            }
         }
     }
 
@@ -198,6 +203,11 @@ class CameraCapture: NSObject {
     }
 
     func capturePhoto(saveTo paths: [String], completion: @escaping (Bool) -> Void) {
+        guard let captureSession = captureSession, captureSession.isRunning else {
+            print("WARNING: Cannot capture - camera session not running")
+            completion(false)
+            return
+        }
         guard let photoOutput = photoOutput else {
             completion(false)
             return
@@ -214,15 +224,21 @@ class CameraCapture: NSObject {
 }
 
 extension CameraCapture: AVCapturePhotoCaptureDelegate {
-    func photoOutput(_ output: AVCapturePhotoOutput, 
-                    didFinishProcessingPhoto photo: AVCapturePhoto, 
+    func photoOutput(_ output: AVCapturePhotoOutput,
+                    didFinishProcessingPhoto photo: AVCapturePhoto,
                     error: Error?) {
-        guard error == nil,
-              let imageData = photo.fileDataRepresentation() else {
+        if let error = error {
+            print("ERROR: Photo capture failed: \(error)")
             completionHandler?(false)
             return
         }
-        
+
+        guard let imageData = photo.fileDataRepresentation() else {
+            print("ERROR: Failed to get image data from photo")
+            completionHandler?(false)
+            return
+        }
+
         var allSucceeded = true
         for path in savePaths {
             do {
@@ -232,7 +248,7 @@ extension CameraCapture: AVCapturePhotoCaptureDelegate {
                 allSucceeded = false
             }
         }
-        
+
         completionHandler?(allSucceeded)
     }
 }
