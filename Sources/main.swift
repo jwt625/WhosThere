@@ -100,19 +100,23 @@ class ActivityMonitor {
             let idleDuration = now.timeIntervalSince(lastActivityTime)
             print("Activity detected after \(Int(idleDuration))s idle - capturing image...")
             captureImage(idleDuration: idleDuration)
+
+            // Stop camera after capture
+            camera.stopSession()
         }
 
         state = .active
         lastActivityTime = now
     }
-    
+
     private func checkIdleState() {
         let now = Date()
         let timeSinceActivity = now.timeIntervalSince(lastActivityTime)
-        
+
         if state == .active && timeSinceActivity >= Config.idleThresholdSeconds {
             state = .idle
-            print("System idle for \(Int(timeSinceActivity))s - waiting for activity...")
+            print("System idle for \(Int(timeSinceActivity))s - starting camera...")
+            camera.startSession()
         }
     }
     
@@ -143,58 +147,68 @@ class CameraCapture: NSObject {
     private var photoOutput: AVCapturePhotoOutput?
     private var completionHandler: ((Bool) -> Void)?
     private var savePaths: [String] = []
-    
-    override init() {
-        super.init()
-        setupCamera()
-    }
-    
+    private var isSessionConfigured = false
+
     private func setupCamera() {
+        guard !isSessionConfigured else { return }
+
         captureSession = AVCaptureSession()
         guard let captureSession = captureSession else { return }
-        
+
         captureSession.sessionPreset = .photo
-        
+
         // Find front camera
-        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, 
-                                                   for: .video, 
+        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera,
+                                                   for: .video,
                                                    position: .front) else {
             print("ERROR: No front camera found")
             return
         }
-        
+
         do {
             let input = try AVCaptureDeviceInput(device: camera)
             if captureSession.canAddInput(input) {
                 captureSession.addInput(input)
             }
-            
+
             photoOutput = AVCapturePhotoOutput()
             if let photoOutput = photoOutput, captureSession.canAddOutput(photoOutput) {
                 captureSession.addOutput(photoOutput)
             }
-            
-            // Start session in background
-            DispatchQueue.global(qos: .background).async {
-                captureSession.startRunning()
-            }
+
+            isSessionConfigured = true
         } catch {
             print("ERROR: Failed to setup camera: \(error)")
         }
     }
-    
+
+    func startSession() {
+        setupCamera()
+        guard let captureSession = captureSession, !captureSession.isRunning else { return }
+        DispatchQueue.global(qos: .background).async {
+            captureSession.startRunning()
+        }
+    }
+
+    func stopSession() {
+        guard let captureSession = captureSession, captureSession.isRunning else { return }
+        DispatchQueue.global(qos: .background).async {
+            captureSession.stopRunning()
+        }
+    }
+
     func capturePhoto(saveTo paths: [String], completion: @escaping (Bool) -> Void) {
         guard let photoOutput = photoOutput else {
             completion(false)
             return
         }
-        
+
         self.savePaths = paths
         self.completionHandler = completion
-        
+
         let settings = AVCapturePhotoSettings()
         settings.flashMode = .off
-        
+
         photoOutput.capturePhoto(with: settings, delegate: self)
     }
 }
