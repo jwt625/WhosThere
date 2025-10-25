@@ -6,7 +6,7 @@ import AppKit
 // MARK: - Configuration
 
 struct Config {
-    static var idleThresholdSeconds: TimeInterval = 10.0
+    static var idleThresholdSeconds: TimeInterval = 30.0
     static let captureDirectory = "images"
     static let tempDirectory = "/tmp/whosthere"
 }
